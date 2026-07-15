@@ -1,10 +1,12 @@
 import { NextResponse } from "next/server";
-import { getStoredTokens, sendReminderEmail } from "@/lib/graph";
+import { parseSession, sendReminderEmail, createSession, refreshIfNeeded } from "@/lib/graph";
 
 export const runtime = "nodejs";
 
 export async function POST(request) {
-  if (!(await getStoredTokens())) {
+  const blob = request.headers.get("x-session");
+  const tokens = parseSession(blob);
+  if (!tokens) {
     return NextResponse.json({ error: "not authenticated" }, { status: 401 });
   }
   let invoices = [];
@@ -18,7 +20,8 @@ export async function POST(request) {
     return NextResponse.json({ skipped: true });
   }
   try {
-    const to = await sendReminderEmail(invoices);
+    await refreshIfNeeded(tokens);
+    const to = await sendReminderEmail(tokens, invoices);
     return NextResponse.json({ sent: true, to, count: invoices.length });
   } catch (e) {
     return NextResponse.json({ error: e.message }, { status: 500 });
