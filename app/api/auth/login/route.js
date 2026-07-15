@@ -5,7 +5,7 @@ import { getAuthUrl } from "@/lib/graph";
 
 export const runtime = "nodejs";
 
-export async function GET() {
+export async function GET(request) {
   const state = crypto.randomBytes(16).toString("hex");
   cookies().set("ms_oauth_state", state, {
     httpOnly: true,
@@ -14,5 +14,9 @@ export async function GET() {
     path: "/",
     maxAge: 600,
   });
-  return NextResponse.redirect(getAuthUrl(state));
+  try {
+    return NextResponse.redirect(getAuthUrl(state));
+  } catch (e) {
+    return NextResponse.redirect(new URL("/?error=config", request.url));
+  }
 }
