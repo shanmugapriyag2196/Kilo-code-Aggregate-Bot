@@ -14,18 +14,18 @@ export default function Dashboard() {
   const [diag, setDiag] = useState(null);
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams(window.location.hash.replace(/^#/, ""));
     const err = params.get("error");
     const msg = params.get("msg");
     const s = params.get("s");
     if (s) {
       sessionStorage.setItem("sess", s);
-      window.history.replaceState({}, "", "/");
+      window.history.replaceState({}, "", window.location.pathname);
     }
     if (err) {
       setAuthError(msg ? `${err}: ${decodeURIComponent(msg)}` : err);
       sessionStorage.removeItem("sess");
-      window.history.replaceState({}, "", "/");
+      window.history.replaceState({}, "", window.location.pathname);
     }
   }, []);
 

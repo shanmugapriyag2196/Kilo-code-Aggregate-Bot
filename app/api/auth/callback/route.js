@@ -14,10 +14,10 @@ export async function GET(request) {
   try {
     const tokens = await exchangeCode(code);
     const blob = createSession(tokens);
-    return NextResponse.redirect(new URL(`/?s=${encodeURIComponent(blob)}`, url.origin));
+    return NextResponse.redirect(new URL(`/#s=${encodeURIComponent(blob)}`, url.origin));
   } catch (e) {
     console.error("CALLBACK_AUTH_ERROR:", e);
     const msg = encodeURIComponent(String(e.message || e).slice(0, 220));
-    return NextResponse.redirect(new URL(`/?error=auth_failed&msg=${msg}`, url.origin));
+    return NextResponse.redirect(new URL(`/#error=auth_failed&msg=${msg}`, url.origin));
   }
 }
