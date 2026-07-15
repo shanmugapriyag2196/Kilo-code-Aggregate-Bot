@@ -16,12 +16,14 @@ export default function Dashboard() {
     const params = new URLSearchParams(window.location.search);
     const err = params.get("error");
     const msg = params.get("msg");
+    const s = params.get("s");
+    if (s) {
+      sessionStorage.setItem("sess", s);
+      window.history.replaceState({}, "", "/");
+    }
     if (err) {
-      setAuthError(
-        msg
-          ? `${err}: ${decodeURIComponent(msg)}`
-          : err
-      );
+      setAuthError(msg ? `${err}: ${decodeURIComponent(msg)}` : err);
+      sessionStorage.removeItem("sess");
       window.history.replaceState({}, "", "/");
     }
   }, []);
@@ -29,10 +31,28 @@ export default function Dashboard() {
   const seenRef = useRef(null);
   const notifyingRef = useRef(false);
 
+  function getSession() {
+    return sessionStorage.getItem("sess");
+  }
+  function setSession(blob) {
+    if (blob) sessionStorage.setItem("sess", blob);
+  }
+
   async function load() {
+    const blob = getSession();
+    if (!blob) {
+      setStatus("auth");
+      return;
+    }
     try {
-      const res = await fetch("/api/emails", { cache: "no-store" });
+      const res = await fetch("/api/emails", {
+        cache: "no-store",
+        headers: { "x-session": blob },
+      });
+      const newBlob = res.headers.get("x-session");
+      if (newBlob) setSession(newBlob);
       if (res.status === 401) {
+        sessionStorage.removeItem("sess");
         setStatus("auth");
         return;
       }
@@ -48,7 +68,7 @@ export default function Dashboard() {
         setBanner(`New invoice email(s) detected — sending email reminder for ${newOnes.length}.`);
         fetch("/api/notify", {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: { "Content-Type": "application/json", "x-session": getSession() },
           body: JSON.stringify({ invoices: newOnes }),
         }).catch(() => {});
         setTimeout(() => setBanner(null), 8000);
@@ -107,7 +127,11 @@ export default function Dashboard() {
     <div className="container">
       <header>
         <h1>Invoice Automation</h1>
-        <a className="btn secondary" href="/api/auth/logout">
+        <a
+          className="btn secondary"
+          href="/api/auth/logout"
+          onClick={() => sessionStorage.removeItem("sess")}
+        >
           Disconnect
         </a>
       </header>
