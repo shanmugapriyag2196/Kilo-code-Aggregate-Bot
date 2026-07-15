@@ -10,6 +10,21 @@ export default function Dashboard() {
   const [invoices, setInvoices] = useState([]);
   const [error, setError] = useState(null);
   const [banner, setBanner] = useState(null);
+  const [authError, setAuthError] = useState(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const err = params.get("error");
+    const msg = params.get("msg");
+    if (err) {
+      setAuthError(
+        msg
+          ? `${err}: ${decodeURIComponent(msg)}`
+          : err
+      );
+      window.history.replaceState({}, "", "/");
+    }
+  }, []);
 
   const seenRef = useRef(null);
   const notifyingRef = useRef(false);
@@ -71,6 +86,7 @@ export default function Dashboard() {
           <h1>Invoice Automation</h1>
         </header>
         <div className="stat">
+          {authError && <div className="error">{authError}</div>}
           <p>Connect your personal Outlook account to start tracking invoice emails.</p>
           <a className="btn" href="/api/auth/login">
             Connect Outlook

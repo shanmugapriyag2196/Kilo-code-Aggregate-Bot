@@ -23,6 +23,8 @@ export async function GET(request) {
     cookies().delete("ms_oauth_state");
     return NextResponse.redirect(new URL("/", url.origin));
   } catch (e) {
-    return NextResponse.redirect(new URL("/?error=auth_failed", url.origin));
+    console.error("CALLBACK_AUTH_ERROR:", e);
+    const msg = encodeURIComponent(String(e.message || e).slice(0, 220));
+    return NextResponse.redirect(new URL(`/?error=auth_failed&msg=${msg}`, url.origin));
   }
 }
