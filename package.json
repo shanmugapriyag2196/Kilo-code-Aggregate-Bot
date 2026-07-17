@@ -1,15 +1,19 @@
 {
   "name": "invoice-automation-dashboard",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "sync": "node scripts/sync-once.js"
   },
   "dependencies": {
-    "next": "^14.2.35",
+    "better-sqlite3": "^11.3.0",
+    "exceljs": "^4.4.0",
+    "next": "14.2.35",
+    "pdf-parse": "^1.1.1",
     "react": "18.3.1",
     "react-dom": "18.3.1"
   }
