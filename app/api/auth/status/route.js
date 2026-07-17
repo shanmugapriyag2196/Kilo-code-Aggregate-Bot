@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
+import { loadTokens } from "@/lib/db";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  return NextResponse.redirect(new URL("/", new URL(process.env.PUBLIC_URL || "http://localhost:3000").origin));
+  const tokens = loadTokens();
+  return NextResponse.json({ connected: !!tokens });
 }
