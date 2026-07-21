@@ -34,21 +34,14 @@ export async function POST() {
       return apiError(401, "token expired, reconnect");
     }
 
-    // Send email reminder if there are unread messages
     if (count > 0 && Array.isArray(messages)) {
       try {
         const me = await getMyEmail();
         if (me) {
           const subjects = messages.slice(0, 10).map(m => `- ${m.subject || "(no subject)"}`).join("\n");
-          await sendReminder(
-            me,
-            `Outlook: ${count} unread email(s)`,
-            `You have ${count} unread email(s) in your inbox:\n\n${subjects}`
-          );
+          await sendReminder(me, `Outlook: ${count} unread email(s)`, `You have ${count} unread email(s):\n\n${subjects}`);
         }
-      } catch {
-        // reminder best-effort
-      }
+      } catch {}
     }
 
     return NextResponse.json({ count, messages, reminded: count > 0 });
