@@ -1,10 +1,15 @@
 import { NextResponse } from "next/server";
-import { loadTokens } from "@/lib/db";
+import { kv } from "@vercel/kv";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const tokens = loadTokens();
+  const tokens = await kv.get("ms_tokens");
   return NextResponse.json({ connected: !!tokens });
+}
+
+export async function POST() {
+  await kv.del("ms_tokens");
+  return NextResponse.json({ disconnected: true });
 }

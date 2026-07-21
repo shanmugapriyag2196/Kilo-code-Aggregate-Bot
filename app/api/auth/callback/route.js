@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { exchangeCode } from "@/lib/graph";
-import { saveTokens } from "@/lib/db";
+import { kv } from "@vercel/kv";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -11,7 +11,7 @@ export async function GET(request) {
   if (!code) return NextResponse.redirect(new URL("/#error=no_code", url.origin));
   try {
     const tokens = await exchangeCode(code);
-    saveTokens(tokens);
+    await kv.set("ms_tokens", tokens);
     return NextResponse.redirect(new URL("/#s=ok", url.origin));
   } catch (e) {
     console.error("CALLBACK_AUTH_ERROR:", e);
