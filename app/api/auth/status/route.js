@@ -1,15 +1,17 @@
 import { NextResponse } from "next/server";
-import { kv } from "@vercel/kv";
+import { loadTokens } from "@/lib/crypto";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  const tokens = await kv.get("ms_tokens");
+  const tokens = loadTokens();
   return NextResponse.json({ connected: !!tokens });
 }
 
 export async function POST() {
-  await kv.del("ms_tokens");
+  const { rm } = require("fs");
+  const TOKEN_FILE = require("path").join(process.cwd(), ".tokens.enc");
+  try { rm(TOKEN_FILE); } catch {}
   return NextResponse.json({ disconnected: true });
 }

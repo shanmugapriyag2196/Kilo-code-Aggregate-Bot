@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
-import { getAuthUrl } from "@/lib/graph";
+import { getAuthUrl } from "@/lib/outlook";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
