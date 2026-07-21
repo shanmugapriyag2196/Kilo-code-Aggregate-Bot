@@ -8,40 +8,67 @@ export default function Dashboard() {
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [reminded, setReminded] = useState(false);
   const [lastRefresh, setLastRefresh] = useState(null);
 
   useEffect(() => {
     const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
-    if (hash.get("error")) setError(decodeURIComponent(hash.get("msg") || hash.get("error")));
-    window.history.replaceState({}, "", window.location.pathname);
+    if (hash.get("error")) {
+      setError(decodeURIComponent(hash.get("msg") || hash.get("error")));
+      window.history.replaceState({}, "", window.location.pathname);
+    }
+    if (hash.get("s") === "ok") {
+      window.history.replaceState({}, "", window.location.pathname);
+    }
     init();
   }, []);
 
   async function init() {
-    const s = await fetch("/api/auth/status").then((r) => r.json()).catch(() => ({ connected: false }));
-    setConnected(s.connected);
-    if (s.connected) loadInbox();
+    try {
+      const s = await fetch("/api/auth/status").then(r => r.json()).catch(() => ({ connected: false }));
+      setConnected(s.connected);
+      if (s.connected) loadInbox();
+    } catch (e) {
+      setError(e.message);
+    }
     setLoading(false);
   }
 
   async function loadInbox() {
     try {
-      const [cRes, mRes] = await Promise.all([
-        fetch("/api/inbox/count", { cache: "no-store" }),
-        fetch("/api/inbox/messages", { cache: "no-store" }),
-      ]);
-      if (cRes.status === 401 || mRes.status === 401) {
+      const res = await fetch("/api/sync", { cache: "no-store" });
+      if (res.status === 401) {
         setConnected(false);
         setCount(null);
         setMessages([]);
         return;
       }
-      const cData = await cRes.json();
-      const mData = await mRes.json();
-      setCount(cData.count ?? 0);
-      setMessages(mData.messages || []);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data.error || "Failed to load");
+        return;
+      }
+      const data = await res.json();
+      setCount(data.count ?? 0);
+      setMessages(data.messages || []);
+      setReminded(data.reminded || false);
       setLastRefresh(new Date());
       setError(null);
+    } catch (e) {
+      setError(e.message);
+    }
+  }
+
+  async function sendReminderNow() {
+    try {
+      const res = await fetch("/api/sync", { method: "POST", cache: "no-store" });
+      const data = await res.json();
+      if (res.ok) {
+        setReminded(true);
+        setTimeout(() => setReminded(false), 5000);
+      } else {
+        setError(data.error);
+      }
     } catch (e) {
       setError(e.message);
     }
@@ -50,7 +77,7 @@ export default function Dashboard() {
   useEffect(() => {
     if (!connected) return;
     loadInbox();
-    const i = setInterval(loadInbox, 30000);
+    const i = setInterval(loadInbox, 60000);
     return () => clearInterval(i);
   }, [connected]);
 
@@ -76,10 +103,12 @@ export default function Dashboard() {
         <div>
           <span className="muted">{lastRefresh ? `Updated ${lastRefresh.toLocaleTimeString()}` : ""}</span>
           <button className="btn secondary" onClick={loadInbox}>Refresh</button>
+          {count > 0 && <button className="btn secondary" onClick={sendReminderNow}>Remind me</button>}
           <a className="btn secondary" href="/api/auth/logout">Disconnect</a>
         </div>
       </header>
 
+      {reminded && <div className="banner">Reminder email sent!</div>}
       {error && <div className="error">{error}</div>}
 
       <div className="stat">

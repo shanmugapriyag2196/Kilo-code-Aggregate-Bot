@@ -1,10 +1,19 @@
 import { NextResponse } from "next/server";
-import { kv } from "@vercel/kv";
+import { loadTokens } from "@/lib/crypto";
+import fs from "fs";
+import path from "path";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function GET() {
-  await kv.del("ms_tokens");
-  return NextResponse.redirect(new URL("/", process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"));
+  const TOKEN_FILE = path.join(process.cwd(), ".tokens.enc");
+  try { fs.unlinkSync(TOKEN_FILE); } catch {}
+  return NextResponse.redirect(new URL("/", process.env.PUBLIC_URL || "http://localhost:3000"));
+}
+
+export async function POST() {
+  const TOKEN_FILE = path.join(process.cwd(), ".tokens.enc");
+  try { fs.unlinkSync(TOKEN_FILE); } catch {}
+  return NextResponse.json({ disconnected: true });
 }
