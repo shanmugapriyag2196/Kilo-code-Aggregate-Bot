@@ -43,6 +43,19 @@ npm run dev
 Open http://localhost:3000 → **Connect Outlook** → sign in with your personal account.
 Grant `Mail.Read` and `Mail.Send`.
 
+## Local folder auto-sync (SavedAttachments)
+
+The dashboard also auto-syncs files from a local folder (default
+`C:\RPA\SavedAttachments`) into the bot. Any file dropped there is copied into
+the project's `invoices/` folder (de-duplicated by source path) and listed under
+**Synced Files** on the dashboard. The sync runs automatically on every dashboard
+load and every 60s while the tab is open.
+
+- Override the source folder with `RPA_ATTACHMENTS_DIR` in `.env.local`.
+- One-shot sync from the CLI: `npm run sync`
+- Continuous watcher (copies new files within ~5s): `npm run sync:watch`
+- Open a synced file via `/api/file/<name>` (path-traversal protected).
+
 ## 3. Deploy to Vercel
 
 1. Push this folder to a Git repo and import it into https://vercel.com.

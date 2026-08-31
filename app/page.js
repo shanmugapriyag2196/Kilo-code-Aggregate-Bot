@@ -11,6 +11,10 @@ export default function Dashboard() {
   const [reminded, setReminded] = useState(false);
   const [lastRefresh, setLastRefresh] = useState(null);
 
+  const [syncedFiles, setSyncedFiles] = useState([]);
+  const [filesError, setFilesError] = useState(null);
+  const [sourceDir, setSourceDir] = useState(null);
+
   // Device code flow state
   const [deviceInfo, setDeviceInfo] = useState(null);
   const [polling, setPolling] = useState(false);
@@ -54,6 +58,23 @@ export default function Dashboard() {
       setError(null);
     } catch (e) {
       setError(e.message);
+    }
+  }
+
+  async function loadFiles() {
+    try {
+      const res = await fetch("/api/files", { cache: "no-store" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setFilesError(data.error || "Failed to load synced files");
+        return;
+      }
+      const data = await res.json();
+      setSyncedFiles(data.files || []);
+      setSourceDir(data.sourceDir || null);
+      setFilesError(data.error || null);
+    } catch (e) {
+      setFilesError(e.message);
     }
   }
 
@@ -125,6 +146,12 @@ export default function Dashboard() {
     return () => clearInterval(i);
   }, [connected]);
 
+  useEffect(() => {
+    loadFiles();
+    const i = setInterval(loadFiles, 60000);
+    return () => clearInterval(i);
+  }, []);
+
   if (loading) return <div className="container"><p>Loading…</p></div>;
 
   return (
@@ -187,6 +214,30 @@ export default function Dashboard() {
           </div>
         </>
       )}
+
+      <header style={{ marginTop: "2rem" }}>
+        <h1>Synced Files</h1>
+        {sourceDir && <span className="muted">from {sourceDir}</span>}
+        {!connected && <button className="btn secondary" onClick={loadFiles}>Refresh</button>}
+      </header>
+
+      {filesError && <div className="error">Error: {filesError}</div>}
+
+      <div className="list">
+        {!filesError && syncedFiles.length === 0 && (
+          <div className="empty">No files synced yet. Drop files into the source folder to auto-sync.</div>
+        )}
+        {syncedFiles.map((f) => (
+          <div className="item" key={f.name}>
+            <div className="subj">{f.name}</div>
+            <div className="meta">
+              <span>{f.size != null ? `${(f.size / 1024).toFixed(1)} KB` : "unknown size"}</span>
+              <span>{f.syncedAt ? new Date(f.syncedAt).toLocaleString() : ""}</span>
+              <a className="pill" href={`/api/file/${encodeURIComponent(f.name)}`} target="_blank" rel="noreferrer">open</a>
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
