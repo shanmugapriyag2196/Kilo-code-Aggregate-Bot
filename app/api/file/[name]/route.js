@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 import fs from "fs";
 import path from "path";
+import { getInvoicesDir } from "@/lib/filesync";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-const INVOICES_DIR = path.join(process.cwd(), "invoices");
+const INVOICES_DIR = getInvoicesDir();
 
 export async function GET(req, { params }) {
   const name = params.name;
