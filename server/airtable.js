@@ -2,42 +2,57 @@ import fs from "fs";
 import os from "os";
 import path from "path";
 import https from "https";
+import { config as loadEnv } from "dotenv";
 
-const SOURCE_DIR = process.env.RPA_ATTACHMENTS_DIR || "C:\\RPA\\SavedAttachments";
-const BASE_DIR = process.env.SYNC_DIR || path.join(os.tmpdir(), "invoice-bot");
-const MANIFEST_PATH = path.join(BASE_DIR, "synced-airtable.json");
+// Load .env.local first (highest priority), then .env.
+loadEnv({ path: path.resolve(process.cwd(), ".env.local"), override: true });
+loadEnv({ path: path.resolve(process.cwd(), ".env") });
 
-const AIRTABLE_API_KEY = process.env.AIRTABLE_API_KEY || "";
-const AIRTABLE_BASE_ID = process.env.AIRTABLE_BASE_ID || "";
-const AIRTABLE_TABLE_ID = process.env.AIRTABLE_TABLE_ID || "";
+const DEFAULT_SOURCE_DIR = "C:\\RPA\\SavedAttachments";
+
+function cfg() {
+  return {
+    sourceDir: process.env.RPA_ATTACHMENTS_DIR || DEFAULT_SOURCE_DIR,
+    baseDir: process.env.SYNC_DIR || path.join(os.tmpdir(), "invoice-bot"),
+    apiKey: process.env.AIRTABLE_API_KEY || "",
+    baseId: process.env.AIRTABLE_BASE_ID || "",
+    tableId: process.env.AIRTABLE_TABLE_ID || "",
+  };
+}
+
+function manifestPath() {
+  return path.join(cfg().baseDir, "synced-airtable.json");
+}
 
 function ensureDir() {
-  if (!fs.existsSync(BASE_DIR)) fs.mkdirSync(BASE_DIR, { recursive: true });
+  const d = cfg().baseDir;
+  if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
 }
 
 function loadManifest() {
   ensureDir();
   try {
-    return JSON.parse(fs.readFileSync(MANIFEST_PATH, "utf8"));
+    return JSON.parse(fs.readFileSync(manifestPath(), "utf8"));
   } catch {
     return { records: [] };
   }
 }
 
 function saveManifest(m) {
-  fs.writeFileSync(MANIFEST_PATH, JSON.stringify(m, null, 2), "utf8");
+  fs.writeFileSync(manifestPath(), JSON.stringify(m, null, 2), "utf8");
 }
 
 export function getSourceDir() {
-  return SOURCE_DIR;
+  return cfg().sourceDir;
 }
 
 export function getSourceFileCount() {
+  const dir = cfg().sourceDir;
   try {
-    if (!fs.existsSync(SOURCE_DIR)) return 0;
-    return fs.readdirSync(SOURCE_DIR).filter((n) => {
+    if (!fs.existsSync(dir)) return 0;
+    return fs.readdirSync(dir).filter((n) => {
       try {
-        return fs.statSync(path.join(SOURCE_DIR, n)).isFile();
+        return fs.statSync(path.join(dir, n)).isFile();
       } catch {
         return false;
       }
@@ -56,7 +71,7 @@ function airtableRequest(method, urlPath, body, contentType) {
       path: urlPath,
       method,
       headers: {
-        Authorization: `Bearer ${AIRTABLE_API_KEY}`,
+        Authorization: `Bearer ${cfg().apiKey}`,
         "Content-Type": contentType || "application/json",
       },
     };
@@ -86,31 +101,9 @@ function airtableRequest(method, urlPath, body, contentType) {
 
 async function uploadOne(filePath, fileName) {
   const buf = fs.readFileSync(filePath);
-  const boundary = "----invoice-bot-" + Date.now();
-  const meta = {
-    fields: {
-      "File Name": fileName,
-      Date: new Date().toISOString(),
-      Attachments: [{ filename: fileName, contentType: "application/octet-stream" }],
-    },
-  };
-
-  const head = Buffer.from(
-    `--${boundary}\r\n` +
-      `Content-Disposition: form-data; name="fields"\r\n\r\n${JSON.stringify(meta.fields)}\r\n` +
-      `--${boundary}\r\n` +
-      `Content-Disposition: form-data; name="file"; filename="${fileName.replace(/"/g, "")}"\r\n` +
-      `Content-Type: application/octet-stream\r\n\r\n`,
-    "utf8"
-  );
-  const tail = Buffer.from(`\r\n--${boundary}--\r\n`, "utf8");
-  const body = Buffer.concat([head, buf, tail]);
-
-  const urlPath = `/v0/${AIRTABLE_BASE_ID}/${encodeURIComponent(AIRTABLE_TABLE_ID)}/Attachments`;
-  // Step 1: create record with attachment placeholder, get upload URL
   const created = await airtableRequest(
     "POST",
-    urlPath,
+    `/v0/${cfg().baseId}/${encodeURIComponent(cfg().tableId)}`,
     { records: [{ fields: { "File Name": fileName, Date: new Date().toISOString() } }] },
     "application/json"
   );
@@ -120,20 +113,21 @@ async function uploadOne(filePath, fileName) {
 }
 
 export async function syncAirtable() {
-  if (!AIRTABLE_API_KEY || !AIRTABLE_BASE_ID || !AIRTABLE_TABLE_ID) {
-    return { ok: false, error: "Airtable not configured (set AIRTABLE_API_KEY, AIRTABLE_BASE_ID, AIRTABLE_TABLE_ID).", added: [], total: 0, sourceCount: 0 };
+  const c = cfg();
+  if (!c.apiKey || !c.baseId || !c.tableId) {
+    return { ok: false, error: "Airtable not configured (set AIRTABLE_API_KEY, AIRTABLE_BASE_ID, AIRTABLE_TABLE_ID).", added: [], total: 0, sourceCount: getSourceFileCount() };
   }
-  if (!fs.existsSync(SOURCE_DIR)) {
-    return { ok: false, error: `Source folder not found: ${SOURCE_DIR}`, added: [], total: 0, sourceCount: 0 };
+  if (!fs.existsSync(c.sourceDir)) {
+    return { ok: false, error: `Source folder not found: ${c.sourceDir}`, added: [], total: 0, sourceCount: 0 };
   }
 
   const manifest = loadManifest();
   const known = new Set(manifest.records.map((r) => r.srcPath));
   const added = [];
-  const files = fs.readdirSync(SOURCE_DIR);
+  const files = fs.readdirSync(c.sourceDir);
 
   for (const name of files) {
-    const src = path.join(SOURCE_DIR, name);
+    const src = path.join(c.sourceDir, name);
     let stat;
     try {
       stat = fs.statSync(src);
@@ -163,15 +157,17 @@ export async function syncAirtable() {
     added,
     total: manifest.records.length,
     sourceCount: files.length,
-    sourceDir: SOURCE_DIR,
+    sourceDir: c.sourceDir,
   };
 }
 
 export function getAirtableStatus() {
+  const c = cfg();
   const m = loadManifest();
   return {
-    configured: Boolean(AIRTABLE_API_KEY && AIRTABLE_BASE_ID && AIRTABLE_TABLE_ID),
+    configured: Boolean(c.apiKey && c.baseId && c.tableId),
     total: m.records.length,
     records: m.records,
   };
 }
+

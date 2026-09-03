@@ -2,11 +2,7 @@ import express from "express";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import dotenv from "dotenv";
 import { syncAirtable, getAirtableStatus, getSourceDir, getSourceFileCount } from "./airtable.js";
-
-dotenv.config({ path: path.resolve(process.cwd(), ".env.local") });
-dotenv.config({ path: path.resolve(process.cwd(), ".env") });
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
