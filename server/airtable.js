@@ -62,6 +62,33 @@ export function getSourceFileCount() {
   }
 }
 
+export function listSourceFiles() {
+  const c = cfg();
+  const out = { sourceDir: c.sourceDir, exists: false, files: [] };
+  try {
+    if (!fs.existsSync(c.sourceDir)) return out;
+    out.exists = true;
+    const entries = fs.readdirSync(c.sourceDir);
+    for (const name of entries) {
+      const p = path.join(c.sourceDir, name);
+      try {
+        const st = fs.statSync(p);
+        if (!st.isFile()) continue;
+        out.files.push({
+          name,
+          path: p,
+          size: st.size,
+          modifiedAt: st.mtime.toISOString(),
+        });
+      } catch {}
+    }
+    out.files.sort((a, b) => b.modifiedAt.localeCompare(a.modifiedAt));
+  } catch (e) {
+    out.error = e.message;
+  }
+  return out;
+}
+
 function airtableRequest(method, urlPath, body, contentType) {
   return new Promise((resolve, reject) => {
     const data = body ? (Buffer.isBuffer(body) ? body : Buffer.from(JSON.stringify(body), "utf8")) : null;

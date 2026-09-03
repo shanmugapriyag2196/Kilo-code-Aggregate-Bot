@@ -6,10 +6,12 @@ import {
   CheckSquare,
   BookOpen,
   Activity,
+  FolderInput,
 } from "lucide-react";
 
 const items = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
+  { to: "/input-files", label: "Input Files", icon: FolderInput },
   { to: "/invoices", label: "Invoices", icon: FileText },
   { to: "/buyers", label: "Buyers", icon: Users },
   { to: "/approvals", label: "Approvals", icon: CheckSquare },

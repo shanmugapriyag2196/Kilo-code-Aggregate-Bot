@@ -2,7 +2,7 @@ import express from "express";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { syncAirtable, getAirtableStatus, getSourceDir, getSourceFileCount } from "./airtable.js";
+import { syncAirtable, getAirtableStatus, getSourceDir, getSourceFileCount, listSourceFiles } from "./airtable.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -15,6 +15,10 @@ app.get("/api/attachments/count", (_req, res) => {
     sourceDir: getSourceDir(),
     count: getSourceFileCount(),
   });
+});
+
+app.get("/api/attachments/list", (_req, res) => {
+  res.json(listSourceFiles());
 });
 
 app.get("/api/airtable/status", (_req, res) => {

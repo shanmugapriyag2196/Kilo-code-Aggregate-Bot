@@ -1,6 +1,7 @@
 import { Route, Routes } from "react-router-dom";
 import Sidebar from "./components/Sidebar";
 import Dashboard from "./pages/Dashboard";
+import InputFiles from "./pages/InputFiles";
 import Invoices from "./pages/Invoices";
 import Buyers from "./pages/Buyers";
 import Approvals from "./pages/Approvals";
@@ -15,6 +16,7 @@ export default function App() {
         <div className="max-w-[1400px] mx-auto p-6">
           <Routes>
             <Route path="/" element={<Dashboard />} />
+            <Route path="/input-files" element={<InputFiles />} />
             <Route path="/invoices" element={<Invoices />} />
             <Route path="/buyers" element={<Buyers />} />
             <Route path="/approvals" element={<Approvals />} />
