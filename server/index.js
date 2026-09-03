@@ -2,7 +2,11 @@ import express from "express";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
+import dotenv from "dotenv";
 import { syncAirtable, getAirtableStatus, getSourceDir, getSourceFileCount } from "./airtable.js";
+
+dotenv.config({ path: path.resolve(process.cwd(), ".env.local") });
+dotenv.config({ path: path.resolve(process.cwd(), ".env") });
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -19,6 +23,21 @@ app.get("/api/attachments/count", (_req, res) => {
 
 app.get("/api/airtable/status", (_req, res) => {
   res.json(getAirtableStatus());
+});
+
+app.get("/api/airtable/debug", (_req, res) => {
+  res.json({
+    sourceDir: getSourceDir(),
+    sourceCount: getSourceFileCount(),
+    airtable: {
+      hasKey: Boolean(process.env.AIRTABLE_API_KEY),
+      keyPrefix: process.env.AIRTABLE_API_KEY ? process.env.AIRTABLE_API_KEY.slice(0, 8) + "…" : null,
+      baseId: process.env.AIRTABLE_BASE_ID || null,
+      tableId: process.env.AIRTABLE_TABLE_ID || null,
+      baseMatch: process.env.AIRTABLE_BASE_ID === "appk7XKYQBNBjuE5",
+      tableMatch: process.env.AIRTABLE_TABLE_ID === "tbletDPR6YDhviL7g",
+    },
+  });
 });
 
 app.post("/api/airtable/sync", async (_req, res) => {
