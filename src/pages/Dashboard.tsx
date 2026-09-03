@@ -1,17 +1,16 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Mail,
-  Paperclip,
   FileSearch,
-  Braces,
-  Sheet,
   CheckCircle2,
   XCircle,
   UserCheck,
   ShieldCheck,
-  BookOpenCheck,
   BookOpen,
   Flag,
+  RefreshCw,
+  Database,
+  Send,
 } from "lucide-react";
 import {
   Bar,
@@ -34,15 +33,10 @@ import { PROCESS_STEPS, stepIndexForInvoice, overallStatus } from "../lib/proces
 const TONE_BY_KPI: Record<string, "default" | "success" | "warning" | "danger" | "info"> = {
   "Total Invoices": "default",
   "Outlook Attachments": "info",
-  "PDF Extraction": "info",
-  "JSON Extraction": "info",
-  "Excel Processing": "info",
   "PO Available": "success",
   "PO Not Available": "danger",
-  "Buyer Assigned": "info",
   "Buyer Approval": "warning",
   "Manager Approval": "warning",
-  "Ready for QuickBooks": "info",
   "Loaded into QuickBooks": "info",
   Completed: "success",
 };
@@ -51,36 +45,84 @@ export default function Dashboard() {
   const data = mockInvoices;
   const total = data.length;
 
+  const [outlookAttachments, setOutlookAttachments] = useState<number | null>(null);
+  const [sourceDir, setSourceDir] = useState<string | null>(null);
+  const [airtableConfigured, setAirtableConfigured] = useState<boolean>(false);
+  const [airtableTotal, setAirtableTotal] = useState<number>(0);
+  const [syncing, setSyncing] = useState(false);
+  const [syncMessage, setSyncMessage] = useState<string | null>(null);
+
+  async function refreshAttachments() {
+    try {
+      const r = await fetch("/api/attachments/count", { cache: "no-store" }).then((r) => r.json());
+      setOutlookAttachments(typeof r.count === "number" ? r.count : 0);
+      setSourceDir(r.sourceDir || null);
+    } catch {
+      setOutlookAttachments(null);
+    }
+  }
+
+  async function refreshAirtableStatus() {
+    try {
+      const r = await fetch("/api/airtable/status", { cache: "no-store" }).then((r) => r.json());
+      setAirtableConfigured(Boolean(r.configured));
+      setAirtableTotal(typeof r.total === "number" ? r.total : 0);
+    } catch {
+      setAirtableConfigured(false);
+    }
+  }
+
+  async function triggerSync() {
+    setSyncing(true);
+    setSyncMessage(null);
+    try {
+      const r = await fetch("/api/airtable/sync", { method: "POST", cache: "no-store" }).then((r) => r.json());
+      if (r.ok) {
+        setSyncMessage(
+          `Synced ${r.added.length} new attachment(s) to Airtable. Total: ${r.total}.`
+        );
+        await refreshAirtableStatus();
+        await refreshAttachments();
+      } else {
+        setSyncMessage(`Sync failed: ${r.error || "unknown error"}`);
+      }
+    } catch (e) {
+      setSyncMessage(`Sync failed: ${(e as Error).message}`);
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  useEffect(() => {
+    refreshAttachments();
+    refreshAirtableStatus();
+    const i = setInterval(() => {
+      refreshAttachments();
+      refreshAirtableStatus();
+    }, 60000);
+    return () => clearInterval(i);
+  }, []);
+
   const kpis = useMemo(() => {
     return {
       "Total Invoices": total,
-      "Outlook Attachments": total,
-      "PDF Extraction": data.filter((i) => i.pdfExtraction === "Completed").length,
-      "JSON Extraction": data.filter((i) => i.jsonExtraction === "Completed").length,
-      "Excel Processing": data.filter((i) => i.excelProcessing === "Completed").length,
+      "Outlook Attachments": outlookAttachments ?? 0,
       "PO Available": data.filter((i) => i.poNumber).length,
       "PO Not Available": data.filter((i) => !i.poNumber).length,
-      "Buyer Assigned": data.filter((i) => i.buyerName).length,
       "Buyer Approval": data.filter((i) => i.buyerApproval !== "Completed").length,
       "Manager Approval": data.filter((i) => i.managerApproval === "Yes").length,
-      "Ready for QuickBooks": data.filter((i) => i.quickBooksStatus === "Ready").length,
       "Loaded into QuickBooks": data.filter((i) => i.quickBooksStatus === "Loaded").length,
       Completed: data.filter((i) => i.quickBooksStatus === "Completed" && i.managerApproval === "Done").length,
     };
-  }, [data]);
+  }, [data, outlookAttachments, total]);
 
   const icons: Record<string, JSX.Element> = {
     "Total Invoices": <FileSearch className="h-4 w-4" />,
     "Outlook Attachments": <Mail className="h-4 w-4" />,
-    "PDF Extraction": <Paperclip className="h-4 w-4" />,
-    "JSON Extraction": <Braces className="h-4 w-4" />,
-    "Excel Processing": <Sheet className="h-4 w-4" />,
     "PO Available": <CheckCircle2 className="h-4 w-4" />,
     "PO Not Available": <XCircle className="h-4 w-4" />,
-    "Buyer Assigned": <UserCheck className="h-4 w-4" />,
     "Buyer Approval": <UserCheck className="h-4 w-4" />,
     "Manager Approval": <ShieldCheck className="h-4 w-4" />,
-    "Ready for QuickBooks": <BookOpenCheck className="h-4 w-4" />,
     "Loaded into QuickBooks": <BookOpen className="h-4 w-4" />,
     Completed: <Flag className="h-4 w-4" />,
   };
@@ -206,7 +248,43 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* Recent invoices snapshot */}
+      {/* Airtable sync */}
+      <div className="card card-pad">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <h3 className="text-sm font-semibold text-slate-700">Airtable Sync</h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              Watches <span className="font-mono">{sourceDir || "C:\\RPA\\SavedAttachments"}</span> and uploads new
+              files to Airtable. Fields: <span className="font-mono">Date</span>,{" "}
+              <span className="font-mono">File Name</span>, <span className="font-mono">Attachments</span>.
+            </p>
+            <div className="mt-2 flex items-center gap-2 text-xs text-slate-600">
+              <Database className="h-3.5 w-3.5 text-slate-400" />
+              Airtable:{" "}
+              {airtableConfigured ? (
+                <StatusPill tone="green">Configured · {airtableTotal} record(s)</StatusPill>
+              ) : (
+                <StatusPill tone="amber">Not configured (set AIRTABLE_API_KEY / BASE_ID / TABLE_ID)</StatusPill>
+              )}
+            </div>
+            {syncMessage && <div className="mt-2 text-xs text-slate-600">{syncMessage}</div>}
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              className="btn-secondary"
+              onClick={() => {
+                refreshAttachments();
+                refreshAirtableStatus();
+              }}
+            >
+              <RefreshCw className="h-4 w-4" /> Refresh
+            </button>
+            <button className="btn-primary" disabled={syncing} onClick={triggerSync}>
+              <Send className="h-4 w-4" /> {syncing ? "Syncing…" : "Sync to Airtable"}
+            </button>
+          </div>
+        </div>
+      </div>
       <div className="card">
         <div className="px-5 py-4 border-b border-slate-200 flex items-center justify-between">
           <div>

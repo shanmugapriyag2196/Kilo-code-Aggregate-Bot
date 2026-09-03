@@ -1,35 +1,58 @@
-# Local folder auto-sync bot
+# Invoice Automation Dashboard
 
-A small Next.js dashboard that auto-syncs files from a local folder
-(default `C:\RPA\SavedAttachments`) into the bot. Any file dropped in the
-source folder is copied into the project's `invoices/` folder (de-duplicated by
-source path) and listed under **Synced Files** on the dashboard. The sync runs
-automatically on every dashboard load and every 60s while the tab is open.
+A Vite + React + TypeScript dashboard for the 23-step Invoice Automation Bot, with
+a small Express server that:
 
-## Setup
+- Counts files in `C:\RPA\SavedAttachments` (drives the **Outlook Attachments** KPI)
+- Syncs new files to your Airtable base (fields: `Date`, `File Name`, `Attachments`)
+
+## Run locally
 
 ```bash
-cp .env.example .env.local   # optional: set RPA_ATTACHMENTS_DIR
+cp .env.example .env.local
+# Fill in AIRTABLE_API_KEY, AIRTABLE_BASE_ID, AIRTABLE_TABLE_ID
 npm install
 npm run dev
 ```
 
-Open http://localhost:3000.
+- Vite dev server: http://localhost:5173
+- Express server (also started by `npm run dev`): http://localhost:3000
 
-## Configuration (`.env.local`)
+The Vite dev server proxies `/api/*` to the Express server.
 
-- `RPA_ATTACHMENTS_DIR` — source folder to watch. Defaults to `C:\RPA\SavedAttachments`.
+## Build & run in production
 
-## Sync from the CLI
+```bash
+npm run build      # builds the Vite SPA into dist/
+npm run start      # Express serves dist/ + /api/* on PORT (default 3000)
+```
 
-- One-shot sync: `npm run sync`
-- Continuous watcher (copies new files within ~5s): `npm run sync:watch`
+## Airtable
 
-## How it works
+1. Create a Personal Access Token at https://airtable.com/create/tokens with
+   scopes `data.records:read`, `data.records:write`, and `attachment:write` on
+   the Invoice Bot base.
+2. Put the token in `AIRTABLE_API_KEY` in `.env.local`.
+3. The base id and table id are already in `.env.example`
+   (`appk7XKYQBNBjuE5` / `tbletDPR6YDhviL7g`).
+4. In the table, create three fields:
+   - `Date` (Single line text)
+   - `File Name` (Single line text)
+   - `Attachments` (Attachment)
 
-- `lib/filesync.js` — scans the source folder, copies new files into `invoices/`,
-  and tracks them in `data/synced-files.json`.
-- `app/api/files/route.js` — auto-syncs and lists synced files.
-- `app/api/file/[name]/route.js` — safely serves a synced file
-  (path-traversal protected).
-- `scripts/sync.mjs` — CLI wrapper used by the `sync` / `sync:watch` scripts.
+The dashboard has a **Sync to Airtable** button. The bot auto-skips files
+already uploaded (tracked locally in `data/synced-airtable.json`) and uploads
+only new ones.
+
+## Endpoints
+
+- `GET  /api/attachments/count` — `{ sourceDir, count }`
+- `GET  /api/airtable/status`   — `{ configured, total, records }`
+- `POST /api/airtable/sync`     — uploads any new files in the source folder
+
+## Deploy
+
+- `vercel.json` is configured for Vite + SPA rewrites.
+- The Express server is for local use. On Vercel the dashboard runs as a
+  static SPA; Airtable sync is a local-only feature (Vercel can't read your
+  Windows folder). Run the local server (or `npm run dev`) to sync files.
