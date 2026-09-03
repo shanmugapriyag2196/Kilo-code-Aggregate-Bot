@@ -45,10 +45,13 @@ export function listUploadedFiles() {
 }
 
 function airtableListAll() {
-  return new Promise((resolve, reject) => {
+  return new Promise((resolve) => {
     const c = cfg();
     if (!c.apiKey || !c.baseId || !c.tableId) return resolve({ ok: false, error: "Airtable not configured" });
     const records = [];
+    let settled = false;
+    const finish = (v) => { if (settled) return; settled = true; resolve(v); };
+    const timer = setTimeout(() => finish({ ok: false, error: "Airtable timeout (5s)" }), 5000);
     function fetchPage(offset) {
       const path = `/v0/${c.baseId}/${encodeURIComponent(c.tableId)}?pageSize=100${offset ? `&offset=${encodeURIComponent(offset)}` : ""}`;
       const req = https.request(
@@ -65,17 +68,18 @@ function airtableListAll() {
           res.on("end", () => {
             const text = Buffer.concat(chunks).toString("utf8");
             if (res.statusCode < 200 || res.statusCode >= 300) {
-              return reject(new Error(`Airtable ${res.statusCode}: ${text}`));
+              clearTimeout(timer);
+              return finish({ ok: false, error: `Airtable ${res.statusCode}: ${text}` });
             }
             let data;
-            try { data = JSON.parse(text); } catch { return reject(new Error("Bad Airtable JSON: " + text)); }
+            try { data = JSON.parse(text); } catch { clearTimeout(timer); return finish({ ok: false, error: "Bad Airtable JSON: " + text }); }
             if (Array.isArray(data.records)) records.push(...data.records);
             if (data.offset) fetchPage(data.offset);
-            else resolve({ ok: true, records });
+            else { clearTimeout(timer); finish({ ok: true, records }); }
           });
         }
       );
-      req.on("error", reject);
+      req.on("error", (e) => { clearTimeout(timer); finish({ ok: false, error: e.message }); });
       req.end();
     }
     fetchPage();
@@ -83,29 +87,25 @@ function airtableListAll() {
 }
 
 export async function listAirtableFiles() {
-  try {
-    const r = await airtableListAll();
-    if (!r.ok) return { ok: false, error: r.error || "Airtable error", files: [] };
-    const files = (r.records || []).map((rec) => {
-      const f = rec.fields || {};
-      return {
-        name: f["File Name"] || rec.id,
-        size: null,
-        modifiedAt: f.Date || rec.createdTime || null,
-        path: `airtable://${rec.id}`,
-        source: "airtable",
-        recordId: rec.id,
-        attachments: Array.isArray(f.Attachments) ? f.Attachments.map((a) => ({ url: a.url, filename: a.filename })) : [],
-      };
-    });
-    return { ok: true, files };
-  } catch (e) {
-    return { ok: false, error: e.message, files: [] };
-  }
+  const r = await airtableListAll();
+  if (!r.ok) return { ok: false, error: r.error || "Airtable error", files: [] };
+  const files = (r.records || []).map((rec) => {
+    const f = rec.fields || {};
+    return {
+      name: f["File Name"] || rec.id,
+      size: null,
+      modifiedAt: f.Date || rec.createdTime || null,
+      path: `airtable://${rec.id}`,
+      source: "airtable",
+      recordId: rec.id,
+      attachments: Array.isArray(f.Attachments) ? f.Attachments.map((a) => ({ url: a.url, filename: a.filename })) : [],
+    };
+  });
+  return { ok: true, files };
 }
 
 export async function getAllKnownFiles() {
-  // Combine local source folder + uploaded files + Airtable records.
+  // Local + uploaded first (fast), then Airtable with timeout.
   const local = listSourceFiles();
   const up = loadUploaded();
   const at = await listAirtableFiles();
