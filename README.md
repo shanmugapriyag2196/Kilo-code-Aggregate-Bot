@@ -1,12 +1,9 @@
 # Invoice Automation Dashboard
 
-A Vite + React + TypeScript dashboard for the 23-step Invoice Automation Bot, with
-a small Express server that:
+A Vite + React + TypeScript dashboard for the 23-step Invoice Automation Bot.
 
-- Watches `RPA_ATTACHMENTS_DIR` (default `C:\RPA\SavedAttachments`)
-- Accepts uploads from a PC-side uploader (so the hosted dashboard can see files
-  even when Vercel has no access to your local Windows folder)
-- Syncs uploaded files to Airtable (fields: `Date`, `File Name`, `Attachments`)
+- **Local:** runs an Express server that reads `RPA_ATTACHMENTS_DIR` directly.
+- **Vercel:** serverless functions in `api/*.mjs` handle `/api/*` and read the same shared code in `shared/api.js`.
 
 ## Run locally
 
@@ -14,62 +11,74 @@ a small Express server that:
 cp .env.example .env.local
 # Fill in AIRTABLE_API_KEY, AIRTABLE_BASE_ID, AIRTABLE_TABLE_ID, UPLOAD_TOKEN
 npm install
-npm run dev
+npm run dev          # Vite (5173) + Express (3000) concurrently
+# or:
+npm run build && npm run start   # production build served on 3000
 ```
 
-- Vite dev server: http://localhost:5173
-- Express server: http://localhost:3000
+Open http://localhost:3000.
 
-The Vite dev server proxies `/api/*` to Express on :3000.
+## Deploy to Vercel
 
-## Build & run in production
+`vercel.json` is configured so Vercel:
+1. Runs `npm run build` to produce `dist/`
+2. Serves `dist/` as static files (with SPA rewrites for routes like `/input-files`)
+3. Auto-detects every `api/*.mjs` as a serverless function
+
+Set the same env vars in **Vercel → Project → Settings → Environment Variables**:
+- `AIRTABLE_API_KEY`
+- `AIRTABLE_BASE_ID` = `appk7XKYQBNBjuE5`
+- `AIRTABLE_TABLE_ID` = `tbletDPR6YDhviL7g`
+- `UPLOAD_TOKEN` (any random hex)
+
+Then deploy. The dashboard at `https://<your-app>.vercel.app` will work the same as locally.
+
+## PC uploader (Vercel)
+
+Vercel cannot read your local Windows folder. Run this on your PC to feed new
+files to the hosted dashboard:
 
 ```bash
-npm run build      # builds the Vite SPA into dist/
-npm run start      # Express serves dist/ + /api/* on PORT (default 3000)
+# .env.local on your PC
+UPLOAD_URL=https://<your-app>.vercel.app/api/upload
+UPLOAD_TOKEN=<same value as on Vercel>
+RPA_ATTACHMENTS_DIR=C:\RPA\SavedAttachments
+
+npm run uploader
 ```
 
-## Vercel + PC uploader (hosted dashboard)
+The uploader POSTs each new file in the source folder to `/api/upload`, where
+it's stored on Vercel's `/tmp` and the dashboard reads it back.
 
-Vercel cannot read `C:\RPA\SavedAttachments` directly. To make the hosted
-dashboard see new files, run the small uploader on your PC:
-
-1. In your Vercel project, set env vars: `AIRTABLE_API_KEY`, `AIRTABLE_BASE_ID`,
-   `AIRTABLE_TABLE_ID`, `UPLOAD_TOKEN` (use the same value locally).
-2. In a `.env.local` next to `scripts/uploader.mjs` (or in the project root),
-   set:
-   ```
-   UPLOAD_URL=https://your-app.vercel.app/api/upload
-   UPLOAD_TOKEN=the-same-value-as-above
-   RPA_ATTACHMENTS_DIR=C:\RPA\SavedAttachments
-   ```
-3. Start it (one terminal, leave open):
-   ```bash
-   npm run uploader
-   ```
-   It watches the folder and POSTs each new/changed file to `/api/upload`
-   with header `X-Upload-Token`. The server stores the file in `/tmp`
-   and the dashboard picks it up.
-4. In the dashboard, click **Sync to Airtable** to push the uploaded files
-   into your Airtable table.
-
-> Limitation: on Vercel serverless the `/tmp` directory is per-instance, so
-> cold starts may lose uploaded files between deployments. For a permanent
-> store, swap the `receiveUpload` function in `server/airtable.js` to write
-> to Vercel Blob / KV / Postgres.
+> Limitation: on Vercel serverless, `/tmp` is per-instance. For a permanent
+> store, swap `receiveUpload` in `shared/api.js` to write to Vercel Blob / KV /
+> Postgres.
 
 ## Endpoints
 
-- `GET  /api/attachments/count` — `{ sourceDir, count, fromLocal, fromUploads }`
-- `GET  /api/attachments/list`  — local + uploaded files
-- `GET  /api/uploaded`          — uploaded-only list
-- `POST /api/upload`            — body: `{ name, contentType, data(base64) }`,
-                                  header: `X-Upload-Token: <UPLOAD_TOKEN>`
+- `GET  /api/attachments/count` — `{ sourceDir, count, fromLocal, fromUploads, fromAirtable }`
+- `GET  /api/attachments/list`  — local + uploaded + airtable
+- `GET  /api/uploaded`
+- `POST /api/upload`            — body: `{ name, contentType, data(base64) }`, header `X-Upload-Token`
 - `GET  /api/airtable/status`
 - `GET  /api/airtable/debug`
 - `POST /api/airtable/sync`
 
-## Deploy
+## Layout
 
-`vercel.json` is configured for Vite + SPA rewrites. The Express server
-runs both locally (`node server/index.js`) and on Vercel.
+```
+api/                  Vercel serverless functions
+  attachments/
+    count.mjs
+    list.mjs
+  airtable/
+    status.mjs
+    debug.mjs
+    sync.mjs
+  uploaded.mjs
+  upload.mjs
+server/index.js       Local Express server (re-uses shared/api.js)
+shared/api.js         All business logic (used by both)
+src/                  Vite + React + TypeScript dashboard
+dist/                 Built SPA (output of `npm run build`)
+```
