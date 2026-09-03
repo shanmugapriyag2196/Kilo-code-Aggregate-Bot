@@ -1,4 +1,4 @@
-import { receiveUpload } from "../../shared/api.js";
+import { receiveUpload } from "../shared/api.js";
 
 export const config = { runtime: "nodejs18.x" };
 

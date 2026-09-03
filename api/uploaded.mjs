@@ -1,4 +1,4 @@
-import { listUploadedFiles } from "../../shared/api.js";
+import { listUploadedFiles } from "../shared/api.js";
 
 export const config = { runtime: "nodejs18.x" };
 

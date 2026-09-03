@@ -1,4 +1,4 @@
-import { getAllKnownFiles } from "../shared/api.js";
+import { getAllKnownFiles } from "../../shared/api.js";
 
 export const config = { runtime: "nodejs18.x" };
 
