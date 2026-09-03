@@ -44,11 +44,71 @@ export function listUploadedFiles() {
   return { uploaded: true, files: m.files };
 }
 
-export function getAllKnownFiles() {
-  // Combine local source folder + uploaded files.
+function airtableListAll() {
+  return new Promise((resolve, reject) => {
+    const c = cfg();
+    if (!c.apiKey || !c.baseId || !c.tableId) return resolve({ ok: false, error: "Airtable not configured" });
+    const records = [];
+    function fetchPage(offset) {
+      const path = `/v0/${c.baseId}/${encodeURIComponent(c.tableId)}?pageSize=100${offset ? `&offset=${encodeURIComponent(offset)}` : ""}`;
+      const req = https.request(
+        {
+          hostname: "api.airtable.com",
+          port: 443,
+          path,
+          method: "GET",
+          headers: { Authorization: `Bearer ${c.apiKey}` },
+        },
+        (res) => {
+          const chunks = [];
+          res.on("data", (x) => chunks.push(x));
+          res.on("end", () => {
+            const text = Buffer.concat(chunks).toString("utf8");
+            if (res.statusCode < 200 || res.statusCode >= 300) {
+              return reject(new Error(`Airtable ${res.statusCode}: ${text}`));
+            }
+            let data;
+            try { data = JSON.parse(text); } catch { return reject(new Error("Bad Airtable JSON: " + text)); }
+            if (Array.isArray(data.records)) records.push(...data.records);
+            if (data.offset) fetchPage(data.offset);
+            else resolve({ ok: true, records });
+          });
+        }
+      );
+      req.on("error", reject);
+      req.end();
+    }
+    fetchPage();
+  });
+}
+
+export async function listAirtableFiles() {
+  try {
+    const r = await airtableListAll();
+    if (!r.ok) return { ok: false, error: r.error || "Airtable error", files: [] };
+    const files = (r.records || []).map((rec) => {
+      const f = rec.fields || {};
+      return {
+        name: f["File Name"] || rec.id,
+        size: null,
+        modifiedAt: f.Date || rec.createdTime || null,
+        path: `airtable://${rec.id}`,
+        source: "airtable",
+        recordId: rec.id,
+        attachments: Array.isArray(f.Attachments) ? f.Attachments.map((a) => ({ url: a.url, filename: a.filename })) : [],
+      };
+    });
+    return { ok: true, files };
+  } catch (e) {
+    return { ok: false, error: e.message, files: [] };
+  }
+}
+
+export async function getAllKnownFiles() {
+  // Combine local source folder + uploaded files + Airtable records.
   const local = listSourceFiles();
   const up = loadUploaded();
-  // Map uploaded → same shape as local.
+  const at = await listAirtableFiles();
   const uploadedAsLocal = up.files.map((f) => ({
     name: f.name,
     path: `uploaded://${f.name}`,
@@ -56,7 +116,21 @@ export function getAllKnownFiles() {
     modifiedAt: f.uploadedAt,
     source: "uploaded",
   }));
-  return { sourceDir: local.sourceDir, exists: local.exists, files: [...local.files, ...uploadedAsLocal] };
+  const airtableAsLocal = (at.files || []).map((f) => ({
+    name: f.name,
+    path: f.path,
+    size: f.size,
+    modifiedAt: f.modifiedAt,
+    source: "airtable",
+    attachments: f.attachments,
+    recordId: f.recordId,
+  }));
+  return {
+    sourceDir: local.sourceDir,
+    exists: local.exists,
+    files: [...local.files, ...uploadedAsLocal, ...airtableAsLocal],
+    airtable: at,
+  };
 }
 
 export async function receiveUpload({ name, data, contentType }) {

@@ -10,18 +10,29 @@ const __dirname = path.dirname(__filename);
 const app = express();
 app.use(express.json());
 
-app.get("/api/attachments/count", (_req, res) => {
-  const all = getAllKnownFiles();
-  res.json({
-    sourceDir: getSourceDir(),
-    count: all.files.length,
-    fromLocal: all.exists ? listSourceFiles().files.length : 0,
-    fromUploads: listUploadedFiles().files.length,
-  });
+app.get("/api/attachments/count", async (_req, res) => {
+  try {
+    const all = await getAllKnownFiles();
+    const local = listSourceFiles();
+    const up = listUploadedFiles();
+    res.json({
+      sourceDir: getSourceDir(),
+      count: all.files.length,
+      fromLocal: local.exists ? local.files.length : 0,
+      fromUploads: up.files.length,
+      fromAirtable: (all.files || []).filter((f) => f.source === "airtable").length,
+    });
+  } catch (e) {
+    res.status(500).json({ error: e.message, count: 0 });
+  }
 });
 
-app.get("/api/attachments/list", (_req, res) => {
-  res.json(getAllKnownFiles());
+app.get("/api/attachments/list", async (_req, res) => {
+  try {
+    res.json(await getAllKnownFiles());
+  } catch (e) {
+    res.status(500).json({ error: e.message, files: [] });
+  }
 });
 
 app.get("/api/uploaded", (_req, res) => {
