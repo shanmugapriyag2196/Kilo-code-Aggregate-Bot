@@ -10,6 +10,84 @@ loadEnv({ path: path.resolve(process.cwd(), ".env") });
 
 const DEFAULT_SOURCE_DIR = "C:\\RPA\\SavedAttachments";
 
+// Where uploaded files (POSTed from the PC uploader) are kept.
+// On Vercel serverless this is /tmp; on local it's the same invoice-bot dir.
+function uploadsDir() {
+  // Use /tmp on Vercel, otherwise the local invoice-bot dir.
+  if (process.env.VERCEL) return "/tmp/invoice-bot-uploads";
+  return path.join(cfg().baseDir, "uploads");
+}
+function uploadedManifestPath() {
+  return path.join(uploadsDir(), "uploaded.json");
+}
+
+function ensureUploadsDir() {
+  const d = uploadsDir();
+  if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
+}
+
+function loadUploaded() {
+  ensureUploadsDir();
+  try {
+    return JSON.parse(fs.readFileSync(uploadedManifestPath(), "utf8"));
+  } catch {
+    return { files: [] };
+  }
+}
+
+function saveUploaded(m) {
+  fs.writeFileSync(uploadedManifestPath(), JSON.stringify(m, null, 2), "utf8");
+}
+
+export function listUploadedFiles() {
+  const m = loadUploaded();
+  return { uploaded: true, files: m.files };
+}
+
+export function getAllKnownFiles() {
+  // Combine local source folder + uploaded files.
+  const local = listSourceFiles();
+  const up = loadUploaded();
+  // Map uploaded → same shape as local.
+  const uploadedAsLocal = up.files.map((f) => ({
+    name: f.name,
+    path: `uploaded://${f.name}`,
+    size: f.size,
+    modifiedAt: f.uploadedAt,
+    source: "uploaded",
+  }));
+  return { sourceDir: local.sourceDir, exists: local.exists, files: [...local.files, ...uploadedAsLocal] };
+}
+
+export async function receiveUpload({ name, data, contentType }) {
+  ensureUploadsDir();
+  if (!name) throw new Error("Missing file name");
+  const safe = path.basename(name).replace(/[^a-zA-Z0-9._-]/g, "_") || "file";
+  // de-dup by name
+  let dest = path.join(uploadsDir(), safe);
+  let i = 1;
+  while (fs.existsSync(dest)) {
+    const ext = path.extname(safe);
+    const stem = safe.slice(0, safe.length - ext.length);
+    const n = `${stem}_${i}${ext}`;
+    dest = path.join(uploadsDir(), n);
+    i++;
+  }
+  const buf = Buffer.from(data, "base64");
+  fs.writeFileSync(dest, buf);
+  const stat = fs.statSync(dest);
+  const m = loadUploaded();
+  const rec = {
+    name: path.basename(dest),
+    size: stat.size,
+    uploadedAt: new Date().toISOString(),
+    contentType: contentType || "application/octet-stream",
+  };
+  m.files.push(rec);
+  saveUploaded(m);
+  return rec;
+}
+
 function cfg() {
   return {
     sourceDir: process.env.RPA_ATTACHMENTS_DIR || DEFAULT_SOURCE_DIR,

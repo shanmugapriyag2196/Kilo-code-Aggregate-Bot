@@ -2,7 +2,7 @@ import express from "express";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
-import { syncAirtable, getAirtableStatus, getSourceDir, getSourceFileCount, listSourceFiles } from "./airtable.js";
+import { syncAirtable, getAirtableStatus, getSourceDir, getSourceFileCount, listSourceFiles, listUploadedFiles, getAllKnownFiles, receiveUpload } from "./airtable.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -11,14 +11,39 @@ const app = express();
 app.use(express.json());
 
 app.get("/api/attachments/count", (_req, res) => {
+  const all = getAllKnownFiles();
   res.json({
     sourceDir: getSourceDir(),
-    count: getSourceFileCount(),
+    count: all.files.length,
+    fromLocal: all.exists ? listSourceFiles().files.length : 0,
+    fromUploads: listUploadedFiles().files.length,
   });
 });
 
 app.get("/api/attachments/list", (_req, res) => {
-  res.json(listSourceFiles());
+  res.json(getAllKnownFiles());
+});
+
+app.get("/api/uploaded", (_req, res) => {
+  res.json(listUploadedFiles());
+});
+
+app.post("/api/upload", async (req, res) => {
+  const expected = process.env.UPLOAD_TOKEN;
+  if (expected) {
+    const got = req.headers["x-upload-token"];
+    if (got !== expected) {
+      return res.status(401).json({ ok: false, error: "invalid token" });
+    }
+  }
+  try {
+    const { name, data, contentType } = req.body || {};
+    if (!data) return res.status(400).json({ ok: false, error: "missing data" });
+    const rec = await receiveUpload({ name, data, contentType });
+    res.json({ ok: true, file: rec });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e.message });
+  }
 });
 
 app.get("/api/airtable/status", (_req, res) => {
